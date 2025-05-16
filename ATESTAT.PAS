@@ -1,0 +1,520 @@
+program atestat;
+uses graph,crt,dos,venbuton,mouse;
+const r=15;
+      coord_ratio=32;
+      esc_key=#27;
+type xset=0..639;{declaration of types}
+     yset=0..479;
+     game_mat=array [1..13,1..20] of record
+                    p:char;
+                    x1,x2:xset;
+                    y1,y2:yset;
+                    point_sem:boolean;
+                    end;
+var gd,gm,i,j:integer;{declaration of variables}
+    sx,sy:string;
+    mat:game_mat;
+    f:text;
+    game_mode:byte;
+
+procedure gen_mat(var mat:game_mat; game_mode:byte);{procedure for generation the game matrix}
+var i,j,xaux,yaux:integer;
+begin
+     case game_mode of
+          1:assign(f,'gfile1.txt');
+          2:assign(f,'gfile2.txt');
+          3:assign(f,'gfile3.txt');
+     end;
+     reset(f);
+     yaux:=0;
+     read(f,mat[1,1].p);
+     mat[1,1].x1:=0;
+     mat[1,1].y1:=32;
+     mat[1,1].x2:=32;
+     mat[1,1].y2:=64;
+     for j:=2 to 20 do
+         begin
+              read(f,mat[1,j].p);
+              mat[1,j].x1:=mat[1,j-1].x2;
+              mat[1,j].y1:=mat[1,j-1].y1;
+              mat[1,j].x2:=mat[1,j].x1+coord_ratio;
+              mat[1,j].y2:=mat[1,j].y1+coord_ratio;
+         end;
+     readln(f);
+     for i:=2 to 13 do
+         begin
+              for j:=1 to 20 do
+                  begin
+                       read(f,mat[i,j].p);
+                       mat[i,j].x1:=mat[i-1,j].x1;
+                       mat[i,j].y1:=mat[i-1,j].y2;
+                       mat[i,j].x2:=mat[i,j].x1+coord_ratio;
+                       mat[i,j].y2:=mat[i,j].y1+coord_ratio;
+                  end;
+              readln(f);
+         end;
+
+end;
+
+procedure draw_pac(x,y:integer);{procedure for drawing pac-man}
+begin
+     setcolor(2);
+     setfillstyle(1,11);
+     pieslice(x,y,35,325,r);
+     setcolor(1);
+     setfillstyle(1,1);
+     circle(x+(r div 6),y-(r div 2),r div 7);
+     floodfill(x+(r div 6),y-(r div 2),1);
+end;
+
+procedure del_pac(x,y:integer);{procedure for deleting pac-man}
+begin
+     setcolor(0);
+     setfillstyle(1,0);
+     circle(x,y,r);
+     floodfill(x,y,0);
+end;
+
+procedure draw_monster(x,y:integer; color:word);{procedure for drawing monsters}
+begin
+     setcolor(color);
+     setfillstyle(1,color);
+
+     arc(x,y,0,180,r);
+     line(x-r,y,x-r,y+r);
+     line(x-r,y+r,x-(r div 2),y+(r div 2+r mod 2));
+     line(x-(r div 2),y+(r div 2+r mod 2),x,y+r);
+     line(x,y+r,x+(r div 2),y+(r div 2+r mod 2));
+     line(x+(r div 2),y+(r div 2+r mod 2),x+r,y+r);
+     line(x+r,y,x+r,y+r);
+     floodfill(x,y,color);
+     setfillstyle(1,15);
+     fillellipse(x-(r div 3+r mod 3),y-(r div 2+r mod 2),(r div 5+r mod 5),(r div 6+r mod 6));
+     fillellipse(x+(r div 3+r mod 3),y-(r div 2+r mod 2),(r div 5+r mod 5),(r div 6+r mod 6));
+     setcolor(black);
+     circle(x-(r div 3+r mod 3),y-(r div 3+r mod 3),(r div 6));
+     circle(x+(r div 3+r mod 3),y-(r div 3+r mod 3),(r div 6));
+     setfillstyle(1,0);
+     floodfill(x-(r div 3+r mod 3),y-(r div 3+r mod 3),0);
+     floodfill(x+(r div 3+r mod 3),y-(r div 3+r mod 3),0);
+     setcolor(11);
+     arc(x,y+(r div 10),200,340,(r div 5));
+end;
+
+procedure del_monster(x,y:integer);{procedure for deleting monsters}
+begin
+     setcolor(0);
+     arc(x,y,0,180,r);
+     line(x-r,y,x-r,y+r);
+     line(x-r,y+r,x-(r div 2),y+(r div 2+r mod 2));
+     line(x-(r div 2),y+(r div 2+r mod 2),x,y+r);
+     line(x,y+r,x+(r div 2),y+(r div 2+r mod 2));
+     line(x+(r div 2),y+(r div 2+r mod 2),x+r,y+r);
+     line(x+r,y,x+r,y+r);
+     setfillstyle(1,0);
+     floodfill(x,y,0);
+end;
+
+procedure calc_coord(var i,j,x,y:integer);{procedure for calculating coordinates}
+begin
+     x:=(mat[i,j].x1+mat[i,j].x2) div 2;
+     y:=(mat[i,j].y1+mat[i,j].y2) div 2;
+end;
+
+procedure move_monster(var i,j,x,y:integer;var dir:integer; c:word);
+{1:move up
+2:move right
+3:move down
+4:move left}
+var circlex,circley:integer;
+    circle_sem:boolean;
+begin
+     if mat[i,j].point_sem then
+     begin
+          circle_sem:=true;
+          calc_coord(i,j,circlex,circley);
+     end;
+     if mat[i,j].p='I' then
+        dir:=random(4);
+     case dir of
+          0:if mat[i-1,j].p='O' then dir:=random(4);
+          1:if mat[i,j+1].p='O' then dir:=random(4);
+          2:if mat[i+1,j].p='O' then dir:=random(4);
+          3:if mat[i,j-1].p='O' then dir:=random(4);
+     end;
+     case dir of
+          0:begin
+                 if (mat[i-1,j].p='P') or (mat[i-1,j].p='I') then
+                    begin
+                         del_monster(x,y);
+                         dec(i);
+                         calc_coord(i,j,x,y);
+                         draw_monster(x,y,c);
+                    end;
+                 if circle_sem then
+                    begin
+                         setcolor(15);
+                         setfillstyle(1,15);
+                         circle(circlex,circley,2);
+                         floodfill(circlex,circley,15);
+                    end;
+          end;
+          1:begin
+                 if (mat[i,j+1].p='P') or (mat[i,j+1].p='I') then
+                    begin
+                         del_monster(x,y);
+                         inc(j);
+                         calc_coord(i,j,x,y);
+                         draw_monster(x,y,c);
+                    end;
+                 if circle_sem then
+                    begin
+                         setcolor(15);
+                         setfillstyle(1,15);
+                         circle(circlex,circley,2);
+                         floodfill(circlex,circley,15);
+                    end;
+          end;
+          2:begin
+                 if (mat[i+1,j].p='P') or (mat[i+1,j].p='I') then
+                    begin
+                         del_monster(x,y);
+                         inc(i);
+                         calc_coord(i,j,x,y);
+                         draw_monster(x,y,c);
+                    end;
+                 if circle_sem then
+                    begin
+                         setcolor(15);
+                         setfillstyle(1,15);
+                         circle(circlex,circley,2);
+                         floodfill(circlex,circley,15);
+                    end;
+          end;
+          3:begin
+                 if (mat[i,j-1].p='P') or (mat[i,j-1].p='I') then
+                    begin
+                         del_monster(x,y);
+                         dec(j);
+                         calc_coord(i,j,x,y);
+                         draw_monster(x,y,c);
+                    end;
+                 if circle_sem then
+                    begin
+                         setcolor(15);
+                         setfillstyle(1,15);
+                         circle(circlex,circley,2);
+                         floodfill(circlex,circley,15);
+                    end;
+          end;
+     end;
+end;
+
+procedure win_screen;
+var x,y:integer;
+    key:char;
+begin
+     cleardevice;
+     x:=getmaxx div 2;
+     y:=getmaxy div 2;
+     setcolor(3);
+     settextstyle(0,0,2);
+     outtextxy(x-60,y-20,'YOU WON!');
+     settextstyle(0,0,1);
+     outtextxy(x-250,y+180,'Game by Dragan Lucian');
+     draw_pac(x+200,y+180);
+     draw_monster(x+200+coord_ratio,y+180,4);
+     draw_monster(x+200+coord_ratio*2,y+180,2);
+     draw_monster(x+200-coord_ratio,y+180,5);
+     draw_monster(x+200-coord_ratio*2,y+180,6);
+     settextstyle(0,0,1);
+     outtextxy(x-70,y+20,'Press ESC to exit...');
+     repeat
+           key:=readkey;
+           if key=esc_key then
+              halt;
+     until false;
+end;
+
+procedure end_screen;{procedure for displaying the end screen}
+var x,y:integer;
+    key:char;
+begin
+     cleardevice;
+     x:=getmaxx div 2;
+     y:=getmaxy div 2;
+     setcolor(4);
+     settextstyle(0,0,2);
+     outtextxy(x-60,y-20,'GAME OVER!');
+     settextstyle(0,0,1);
+     outtextxy(x-250,y+180,'Game by Dragan Lucian');
+     draw_pac(x+200,y+180);
+     draw_monster(x+200+coord_ratio,y+180,4);
+     draw_monster(x+200+coord_ratio*2,y+180,2);
+     draw_monster(x+200-coord_ratio,y+180,5);
+     draw_monster(x+200-coord_ratio*2,y+180,6);
+     settextstyle(0,0,1);
+     outtextxy(x-60,y+20,'Press ESC to exit...');
+     repeat
+           key:=readkey;
+           if key=esc_key then
+              halt;
+     until false;
+end;
+
+procedure initialize_game(game_mode:byte);{procedure for the game}
+var i,j,pacx,pacy,monx1,mony1,monx2,mony2,paci,pacj,moni1,monj1,moni2,monj2,d,monx3,mony3,moni3,monj3:integer;
+    moni4,monj4,monx4,mony4,score,mon_dir1,mon_dir2,mon_dir3,mon_dir4:integer;
+    win_score:integer;
+    key:char;
+    color:word;
+    score_str:string;
+begin
+     mouseoff;
+     cleardevice;
+     score:=0;
+     case game_mode of
+          1:begin
+                 gen_mat(mat,1);
+                 color:=5;
+                 win_score:=710;
+          end;
+          2:begin
+                 gen_mat(mat,2);
+                 color:=6;
+                 win_score:=1150;
+          end;
+          3:begin
+                 gen_mat(mat,3);
+                 color:=12;
+                 win_score:=1190;
+          end;
+     end;
+     for i:=1 to 13 do
+         for j:=1 to 20 do
+             begin
+                  if (mat[i,j].p)='O' then
+                     begin
+                          setcolor(color);
+                          setfillstyle(1,color);
+                          rectangle(mat[i,j].x1+1,mat[i,j].y1+1,mat[i,j].x2-1,mat[i,j].y2-1);
+                          {floodfill(mat[i,j].x1+2,mat[i,j].y1+1,color);}
+                     end;
+                  if ((mat[i,j].p)='P') or (mat[i,j].p='I') then
+                     begin
+                          setcolor(15);
+                          setfillstyle(1,15);
+                          circle((mat[i,j].x1+mat[i,j].x2) div 2,(mat[i,j].y1+mat[i,j].y2) div 2,2);
+                          floodfill((mat[i,j].x1+mat[i,j].x2) div 2,(mat[i,j].y1+mat[i,j].y2) div 2,15);
+                          mat[i,j].point_sem:=true;
+                     end;
+             end;
+     case game_mode of
+          1:begin
+                 paci:=2;
+                 pacj:=3;
+                 calc_coord(paci,pacj,pacx,pacy);
+                 draw_pac(pacx,pacy);
+                 moni1:=10; monj1:=9;
+                 moni2:=10; monj2:=10;
+                 moni3:=0; monj3:=0;
+                 moni4:=0; monj4:=0;
+                 calc_coord(moni1,monj1,monx1,mony1);
+                 calc_coord(moni2,monj2,monx2,mony2);
+                 draw_monster(monx1,mony1,4);
+                 draw_monster(monx2,mony2,2);
+                 mon_dir1:=1;
+                 mon_dir2:=3;
+
+          end;
+          2:begin
+                 paci:=1;
+                 pacj:=12;
+                 calc_coord(paci,pacj,pacx,pacy);
+                 draw_pac(pacx,pacy);
+                 moni1:=10; monj1:=4;
+                 moni2:=10; monj2:=5;
+                 moni3:=2; monj3:=19;
+                 moni4:=0; monj4:=0;
+                 calc_coord(moni1,monj1,monx1,mony1);
+                 calc_coord(moni2,monj2,monx2,mony2);
+                 calc_coord(moni3,monj3,monx3,mony3);
+                 draw_monster(monx1,mony1,4);
+                 draw_monster(monx2,mony2,2);
+                 draw_monster(monx3,mony3,5);
+                 mon_dir1:=1;
+                 mon_dir2:=3;
+                 mon_dir3:=3;
+          end;
+          3:begin
+                 paci:=12;
+                 pacj:=6;
+                 calc_coord(paci,pacj,pacx,pacy);
+                 draw_pac(pacx,pacy);
+                 moni1:=6; monj1:=9;
+                 moni2:=6; monj2:=10;
+                 moni3:=6; monj3:=11;
+                 moni4:=6; monj4:=12;
+                 calc_coord(moni1,monj1,monx1,mony1);
+                 calc_coord(moni2,monj2,monx2,mony2);
+                 calc_coord(moni3,monj3,monx3,mony3);
+                 calc_coord(moni4,monj4,monx4,mony4);
+                 draw_monster(monx1,mony1,4);
+                 draw_monster(monx2,mony2,2);
+                 draw_monster(monx3,mony3,5);
+                 draw_monster(monx4,mony4,6);
+                 mon_dir1:=0;
+                 mon_dir2:=0;
+                 mon_dir3:=0;
+                 mon_dir4:=0;
+          end;
+
+     end;
+     settextstyle(0,0,1);
+     setcolor(15);
+     outtextxy(0,471,'Press W,A,S,D to move...');
+     settextstyle(0,0,2);
+     repeat
+           str(score,score_str);
+           setcolor(12);
+           outtextxy(576,9,score_str);
+           key:=readkey;
+           if score<>win_score then
+           begin
+           setcolor(0);
+           setfillstyle(1,0);
+           rectangle(570,7,620,16);
+           floodfill(571,8,0);
+           outtextxy(576,9,score_str);
+           if (key='w') and ((mat[paci-1,pacj].p='P') or (mat[paci-1,pacj].p='I')) then
+              begin
+                   if mat[paci,pacj].point_sem then
+                      score:=score+10;
+                   del_pac(pacx,pacy);
+                   mat[paci,pacj].point_sem:=false;
+                   dec(paci);
+                   calc_coord(paci,pacj,pacx,pacy);
+                   draw_pac(pacx,pacy);
+              end;
+           if (key='d') and ((mat[paci,pacj+1].p='P') or (mat[paci,pacj+1].p='I')) then
+              begin
+                   if mat[paci,pacj].point_sem then
+                      score:=score+10;
+                   del_pac(pacx,pacy);
+                   mat[paci,pacj].point_sem:=false;
+                   inc(pacj);
+                   calc_coord(paci,pacj,pacx,pacy);
+                   draw_pac(pacx,pacy);
+              end;
+           if (key='a') and ((mat[paci,pacj-1].p='P') or (mat[paci,pacj-1].p='I')) then
+              begin
+                   if mat[paci,pacj].point_sem then
+                      score:=score+10;
+                   del_pac(pacx,pacy);
+                   mat[paci,pacj].point_sem:=false;
+                   dec(pacj);
+                   calc_coord(paci,pacj,pacx,pacy);
+                   draw_pac(pacx,pacy);
+              end;
+           if (key='s') and ((mat[paci+1,pacj].p='P') or (mat[paci+1,pacj].p='I')) then
+              begin
+                   if mat[paci,pacj].point_sem then
+                      score:=score+10;
+                   del_pac(pacx,pacy);
+                   mat[paci,pacj].point_sem:=false;
+                   inc(paci);
+                   calc_coord(paci,pacj,pacx,pacy);
+                   draw_pac(pacx,pacy);
+              end;
+           case game_mode of
+                1:begin
+                       if ((monx1=pacx) and (mony1=pacy)) or ((monx2=pacx) and (mony2=pacy)) then
+                          end_screen;
+                       move_monster(moni1,monj1,monx1,mony1,mon_dir1,4);
+                       move_monster(moni2,monj2,monx2,mony2,mon_dir2,2);
+                       if ((monx1=pacx) and (mony1=pacy)) or ((monx2=pacx) and (mony2=pacy)) then
+                          end_screen;
+                end;
+                2:begin
+                       if ((monx1=pacx) and (mony1=pacy)) or ((monx2=pacx) and (mony2=pacy))
+                        or ((monx3=pacx) and (mony3=pacy)) then
+                          end_screen;
+                       move_monster(moni1,monj1,monx1,mony1,mon_dir1,4);
+                       move_monster(moni2,monj2,monx2,mony2,mon_dir2,2);
+                       move_monster(moni3,monj3,monx3,mony3,mon_dir3,5);
+                       if ((monx1=pacx) and (mony1=pacy)) or ((monx2=pacx) and (mony2=pacy))
+                        or ((monx3=pacx) and (mony3=pacy)) then
+                          end_screen;
+                end;
+                3:begin
+                       if ((monx1=pacx) and (mony1=pacy)) or ((monx2=pacx) and (mony2=pacy))
+                        or ((monx3=pacx) and (mony3=pacy)) or ((monx4=pacx) and (mony4=pacy)) then
+                          end_screen;
+                       move_monster(moni1,monj1,monx1,mony1,mon_dir1,4);
+                       move_monster(moni2,monj2,monx2,mony2,mon_dir2,2);
+                       move_monster(moni3,monj3,monx3,mony3,mon_dir3,5);
+                       move_monster(moni4,monj4,monx4,mony4,mon_dir4,6);
+                       if ((monx1=pacx) and (mony1=pacy)) or ((monx2=pacx) and (mony2=pacy))
+                        or ((monx3=pacx) and (mony3=pacy)) or ((monx4=pacx) and (mony4=pacy)) then
+                          end_screen;
+                end;
+           end;
+           if score=win_score then
+              begin
+                   win_screen;
+              end;
+           if key=esc_key then
+              halt;
+           end;
+     until false;
+
+end;
+
+procedure initialize_menu;{procedure for the menu}
+var ext_but,str_but,easy_but,med_but,hard_but,info_but:button;
+    x,y,x1,y1:integer;
+begin
+     cleardevice;
+     x:=getmaxx div 2;
+     y:=getmaxy div 2;
+     x1:=x+100;
+     y1:=y+100;
+     settextstyle(0,0,3);
+     outtextxy(x-80,y-80,'PAC-MAN');
+     settextstyle(0,0,1);
+     outtextxy(x-250,y+180,'Game by Dragan Lucian');
+     buton(ext_but,x-50,y+40,x+50,y+70,8,12,'EXIT');
+     buton(str_but,x-50,y,x+50,y+30,8,2,'START');
+     definire_buton(easy_but,x+55,y-30,x+125,y,8,3,'EASY');
+     definire_buton(med_but,x+55,y,x+125,y+30,8,5,'MEDIUM');
+     definire_buton(hard_but,x+55,y+30,x+125,y+60,8,12,'HARD');
+     draw_pac(x+200,y+180);
+     draw_monster(x+200+coord_ratio,y+180,4);
+     draw_monster(x+200+coord_ratio*2,y+180,2);
+     draw_monster(x+200-coord_ratio,y+180,5);
+     draw_monster(x+200-coord_ratio*2,y+180,6);
+     repeat
+           if buton_apasat(str_but) then
+              begin
+                   pune_buton(easy_but);
+                   pune_buton(med_but);
+                   pune_buton(hard_but);
+              end;
+           if buton_apasat(easy_but) then
+              initialize_game(1);
+           if buton_apasat(med_but) then
+              initialize_game(2);
+           if buton_apasat(hard_but) then
+              initialize_game(3);
+     until buton_apasat(ext_but);
+end;
+
+begin {pp}
+      randomize;
+      gd:=detect;
+      initgraph(gd,gm,'');
+      setgraphmode(2);
+      maximizemousewindow;
+      mouseon;
+      initialize_menu;
+end.
